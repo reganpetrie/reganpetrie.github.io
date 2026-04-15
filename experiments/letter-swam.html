@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>001 Character Field</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #f5f5f0;
+      overflow: hidden;
+      cursor: none;
+    }
+    canvas { display: block; }
+    #cursor {
+      position: fixed;
+      pointer-events: none;
+      z-index: 10;
+      width: 16px; height: 16px;
+      border: 2px solid #e33;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.3s;
+      opacity: 0;
+    }
+    body:hover #cursor { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="cursor"></div>
+  <canvas id="c"></canvas>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const cursorEl = document.getElementById('cursor');
+
+    const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
+    const INITIAL_CHAR = ALPHABET[Math.floor(Math.random() * 26)];
+
+    const SPACING = 28;
+    const FONT_SIZE = 18;
+    const INFLUENCE_RADIUS = 120;
+    const RETURN_SPEED = 0.03;
+    const MORPH_SPEED = 0.008;  // slow morph
+
+    // Words that randomly appear near the cursor
+    const WORDS = ['hello', 'howdy', 'gidday', 'thanks'];
+    const WORD_INTERVAL = 3000;   // ms between word attempts
+    const WORD_MORPH_SPEED = 0.015;
+    let lastWordTime = 0;
+    let wordCells = [];  // [{index, letter, age}]
+
+    let mouse = { x: -9999, y: -9999 };
+    let cols, rows, angles, baseAngles;
+    let cellFrom;        // the letter morphing FROM
+    let cellTo;          // the letter morphing TO
+    let cellMorph;       // 0 = fully "from", 1 = fully "to"
+    let cellActive;      // is mouse currently over this cell?
+
+    function randomOther(not) {
+      const idx = Math.floor(Math.random() * 25);
+      const notIdx = ALPHABET.indexOf(not);
+      return ALPHABET[idx >= notIdx ? idx + 1 : idx];
+    }
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      cols = Math.ceil(canvas.width / SPACING) + 1;
+      rows = Math.ceil(canvas.height / SPACING) + 1;
+
+      const total = cols * rows;
+      baseAngles = new Float32Array(total);
+      angles = new Float32Array(total);
+      cellFrom = new Array(total);
+      cellTo = new Array(total);
+      cellMorph = new Float32Array(total);
+      cellActive = new Uint8Array(total);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          const nx = c * 0.08;
+          const ny = r * 0.08;
+          baseAngles[i] = Math.sin(nx + ny * 0.7) * Math.PI * 0.5
+                        + Math.cos(ny * 1.3 - nx * 0.5) * Math.PI * 0.3;
+          angles[i] = baseAngles[i];
+          cellFrom[i] = INITIAL_CHAR;
+          cellTo[i] = randomOther(INITIAL_CHAR);
+          cellMorph[i] = 0;
+          cellActive[i] = 0;
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = `${FONT_SIZE}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const mx = mouse.x;
+      const my = mouse.y;
+      const ir2 = INFLUENCE_RADIUS * INFLUENCE_RADIUS;
+      const now = performance.now();
+
+      // Try to spawn a word near the mouse every few seconds
+      const mouseOnScreen = mx > 0 && my > 0 && mx < canvas.width && my < canvas.height;
+      if (mouseOnScreen && now - lastWordTime > WORD_INTERVAL) {
+        lastWordTime = now;
+        const word = WORDS[Math.floor(Math.random() * WORDS.length)];
+
+        // Find the grid cell nearest the mouse
+        const mc = Math.round((mx - SPACING * 0.5) / SPACING);
+        const mr = Math.round((my - SPACING * 0.5) / SPACING);
+
+        // Offset the word randomly nearby (-3 to +3 rows/cols from mouse)
+        const offC = mc + Math.floor(Math.random() * 7) - 3;
+        const offR = mr + Math.floor(Math.random() * 5) - 2;
+
+        // Check if the word fits horizontally
+        if (offC >= 0 && offC + word.length < cols && offR >= 0 && offR < rows) {
+          for (let k = 0; k < word.length; k++) {
+            const ci = offR * cols + offC + k;
+            // Set this cell to morph into the word's letter
+            const current = cellMorph[ci] >= 1 ? cellTo[ci] : cellFrom[ci];
+            cellFrom[ci] = current;
+            cellTo[ci] = word[k];
+            cellMorph[ci] = 0;
+            // Track it so we know it's a "word cell"
+            wordCells.push({ index: ci, spawned: now });
+          }
+        }
+      }
+
+      // Expire word cells after 4 seconds — let them morph back to random
+      wordCells = wordCells.filter(wc => {
+        if (now - wc.spawned > 4000) {
+          const ci = wc.index;
+          if (cellMorph[ci] >= 1) {
+            cellFrom[ci] = cellTo[ci];
+            cellTo[ci] = randomOther(cellFrom[ci]);
+            cellMorph[ci] = 0;
+          }
+          return false;
+        }
+        return true;
+      });
+
+      // Build a set of word cell indices for fast lookup
+      const wordSet = new Set(wordCells.map(wc => wc.index));
+      // Map word cell index to spawn time for color pulse
+      const wordSpawnMap = new Map(wordCells.map(wc => [wc.index, wc.spawned]));
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          const x = c * SPACING + SPACING * 0.5;
+          const y = r * SPACING + SPACING * 0.5;
+
+          const dx = mx - x;
+          const dy = my - y;
+          const dist2 = dx * dx + dy * dy;
+
+          if (dist2 < ir2) {
+            const dist = Math.sqrt(dist2);
+            const targetAngle = Math.atan2(dy, dx);
+            const strength = 1 - (dist / INFLUENCE_RADIUS);
+            const ease = strength * strength * 0.25;
+            let diff = targetAngle - angles[i];
+            diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+            angles[i] += diff * ease;
+
+            if (!cellActive[i]) {
+              cellActive[i] = 1;
+              if (cellMorph[i] >= 1) {
+                cellFrom[i] = cellTo[i];
+                cellTo[i] = randomOther(cellFrom[i]);
+                cellMorph[i] = 0;
+              }
+            }
+
+            if (cellMorph[i] < 1) {
+              cellMorph[i] = Math.min(1, cellMorph[i] + MORPH_SPEED);
+            }
+          } else {
+            let diff = baseAngles[i] - angles[i];
+            diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+            angles[i] += diff * RETURN_SPEED;
+
+            cellActive[i] = 0;
+
+            if (cellMorph[i] > 0 && cellMorph[i] < 1) {
+              cellMorph[i] = Math.min(1, cellMorph[i] + MORPH_SPEED * 0.5);
+            }
+          }
+
+          const m = cellMorph[i];
+          // Word cells settle to horizontal via shortest rotation path
+          let a = angles[i];
+          if (wordSet.has(i)) {
+            // Normalize angle to [-PI, PI], then lerp toward 0 by shortest arc
+            const norm = Math.atan2(Math.sin(a), Math.cos(a));
+            a = norm * (1 - m);
+          }
+          const cos = Math.cos(a);
+          const sin = Math.sin(a);
+
+          // Set transform directly instead of save/translate/rotate/restore
+          ctx.setTransform(cos, sin, -sin, cos, x, y);
+
+          // Color pulse for word cells: light blue flash over 200ms
+          let fillColor = '#1a1a1a';
+          if (wordSpawnMap.has(i)) {
+            const elapsed = now - wordSpawnMap.get(i);
+            if (elapsed < 200) {
+              const t = Math.sin(elapsed / 200 * Math.PI);
+              const r = Math.round(26 + (130 - 26) * t);
+              const g = Math.round(26 + (190 - 26) * t);
+              const b = Math.round(26 + (255 - 26) * t);
+              fillColor = `rgb(${r},${g},${b})`;
+            }
+          }
+
+          if (m <= 0 || m >= 1) {
+            // Fully one character, single draw
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = fillColor;
+            ctx.fillText(m >= 1 ? cellTo[i] : cellFrom[i], 0, 0);
+          } else {
+            // Crossfade
+            ctx.fillStyle = fillColor;
+            ctx.globalAlpha = 1 - m;
+            ctx.fillText(cellFrom[i], 0, 0);
+            ctx.globalAlpha = m;
+            ctx.fillText(cellTo[i], 0, 0);
+          }
+        }
+      }
+
+      // Reset transform
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+
+      requestAnimationFrame(draw);
+    }
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      cursorEl.style.left = e.clientX + 'px';
+      cursorEl.style.top = e.clientY + 'px';
+    });
+    window.addEventListener('mouseleave', () => {
+      mouse.x = -9999;
+      mouse.y = -9999;
+    });
+
+    resize();
+    draw();
+  </script>
+</body>
+</html>

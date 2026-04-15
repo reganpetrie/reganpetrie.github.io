@@ -3,14 +3,105 @@
 <head>
   <title>Experiments</title>
   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-      background-color: black;
-      color: white;
+      background-color: #111;
+      color: #f5f5f0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      line-height: 15px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      padding: 20px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    header h1 {
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 24px;
+      padding: 0 24px 60px;
+    }
+
+    .card {
+      position: relative;
+      aspect-ratio: 1;
+      border: 1px solid #222;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .card:hover {
+      border-color: #444;
+    }
+
+    .card iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      pointer-events: none;
+    }
+
+    .card:hover iframe {
+      pointer-events: auto;
+    }
+
+    .card-label {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px 14px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 1;
+      transition: opacity 0.3s;
+    }
+
+    .card:hover .card-label {
+      opacity: 0;
+    }
+
+    footer {
+      padding: 20px 24px;
+      display: flex;
+      justify-content: flex-end;
+      opacity: 0.25;
     }
   </style>
 </head>
 <body>
-  <h1>My Experiments</h1>
-  <p>First test is live 🚀</p>
+
+  <div class="grid">
+
+    <div class="card">
+      <iframe src="experiments/letter-swam.html"></iframe>
+      <div class="card-label">
+        <span>001 Letter Swarm</span>
+        <span>Canvas</span>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <span>Built with Claude Code</span>
+  </footer>
+
 </body>
 </html>
